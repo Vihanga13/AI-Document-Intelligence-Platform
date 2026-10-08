@@ -24,10 +24,32 @@ export function HealthIndicator() {
   };
 
   useEffect(() => {
-    checkHealth();
-    // Poll every 30 seconds
-    const interval = setInterval(checkHealth, 30000);
-    return () => clearInterval(interval);
+    let isMounted = true;
+
+    const runCheck = async () => {
+      try {
+        const data = await api.getHealth();
+        if (isMounted) {
+          setHealth(data);
+          setError(null);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'API offline');
+          setHealth(null);
+          setLoading(false);
+        }
+      }
+    };
+
+    runCheck();
+    const interval = setInterval(runCheck, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   if (loading && !health && !error) {

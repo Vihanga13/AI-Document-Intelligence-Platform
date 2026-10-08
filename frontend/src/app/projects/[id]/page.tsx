@@ -1,22 +1,19 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Navbar } from '@/components/layout/Navbar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ProjectStatusBadge } from '@/components/common/ProjectStatusBadge';
 import { api } from '@/lib/api';
 import { Project, ProjectStatus } from '@/types';
 
-export default function ProjectDetailsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = use(params);
+function ProjectDetailsContent() {
+  const params = useParams();
   const router = useRouter();
-  const projectId = Number(id);
+  const idStr = Array.isArray(params?.id) ? params.id[0] : params?.id;
+  const projectId = Number(idStr);
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -24,7 +21,13 @@ export default function ProjectDetailsPage({
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-  const fetchProject = async () => {
+  const fetchProject = useCallback(async () => {
+    if (!projectId || Number.isNaN(projectId)) {
+      setError('Invalid project ID');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -35,12 +38,40 @@ export default function ProjectDetailsPage({
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
 
   useEffect(() => {
-    if (projectId) {
-      fetchProject();
-    }
+    let isMounted = true;
+
+    const load = async () => {
+      if (!projectId || Number.isNaN(projectId)) {
+        if (isMounted) {
+          setError('Invalid project ID');
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const data = await api.getProject(projectId);
+        if (isMounted) {
+          setProject(data);
+          setError(null);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'Project not found');
+          setLoading(false);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      isMounted = false;
+    };
   }, [projectId]);
 
   const handleStatusChange = async (newStatus: ProjectStatus) => {
@@ -87,7 +118,7 @@ export default function ProjectDetailsPage({
             </Link>
             <span>/</span>
             <span className="text-white font-medium truncate">
-              {project ? project.name : `Project #${id}`}
+              {project ? project.name : `Project #${idStr || ''}`}
             </span>
           </nav>
 
@@ -102,9 +133,15 @@ export default function ProjectDetailsPage({
           ) : error || !project ? (
             <div className="p-8 text-center bg-rose-950/20 border border-rose-800/40 rounded-xl">
               <p className="text-sm text-rose-300 mb-3">{error || 'Project not found'}</p>
+              <button
+                onClick={fetchProject}
+                className="inline-flex px-4 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors cursor-pointer mr-2"
+              >
+                Retry
+              </button>
               <Link
                 href="/projects"
-                className="inline-flex px-4 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors"
+                className="inline-flex px-4 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-750 rounded-lg transition-colors"
               >
                 Return to Projects
               </Link>
@@ -217,5 +254,19 @@ export default function ProjectDetailsPage({
         </main>
       </div>
     </div>
+  );
+}
+
+export default function ProjectDetailsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-400 text-sm">
+          Loading project details...
+        </div>
+      }
+    >
+      <ProjectDetailsContent />
+    </Suspense>
   );
 }

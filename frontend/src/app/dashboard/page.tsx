@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Navbar } from '@/components/layout/Navbar';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -17,12 +17,11 @@ export default function DashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const loadData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch health and projects concurrently
       const [healthData, projectsData] = await Promise.allSettled([
         api.getHealth(),
         api.getProjects(),
@@ -42,10 +41,46 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const loadData = async () => {
+      try {
+        const [healthData, projectsData] = await Promise.allSettled([
+          api.getHealth(),
+          api.getProjects(),
+        ]);
+
+        if (isMounted) {
+          if (healthData.status === 'fulfilled') {
+            setHealth(healthData.value);
+          } else {
+            setHealth(null);
+          }
+
+          if (projectsData.status === 'fulfilled') {
+            setProjects(projectsData.value);
+            setError(null);
+          } else {
+            setError('Failed to fetch projects. Please ensure the backend API is running.');
+          }
+          setLoading(false);
+        }
+      } catch {
+        if (isMounted) {
+          setError('Failed to load data.');
+          setLoading(false);
+        }
+      }
+    };
+
     loadData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleProjectCreated = (newProject: Project) => {
@@ -89,7 +124,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex items-center space-x-3">
               <button
-                onClick={loadData}
+                onClick={fetchDashboardData}
                 className="px-3 py-2 text-xs font-medium text-slate-300 hover:text-white bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-800 transition-colors flex items-center space-x-1.5 cursor-pointer"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -191,7 +226,7 @@ export default function DashboardPage() {
               <div className="p-8 text-center bg-rose-950/20 border border-rose-800/40 rounded-xl">
                 <p className="text-sm text-rose-300 mb-3">{error}</p>
                 <button
-                  onClick={loadData}
+                  onClick={fetchDashboardData}
                   className="px-4 py-1.5 text-xs font-medium text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition-colors cursor-pointer"
                 >
                   Retry Connection

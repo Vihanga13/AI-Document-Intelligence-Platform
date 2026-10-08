@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { CreateProjectModal } from '@/components/projects/CreateProjectModal';
 import { ProjectCard } from '@/components/projects/ProjectCard';
 import { api } from '@/lib/api';
-import { Project, ProjectStatus } from '@/types';
+import { Project } from '@/types';
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -17,7 +17,7 @@ export default function ProjectsPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -32,10 +32,36 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchProjects();
+    let isMounted = true;
+
+    const load = async () => {
+      try {
+        const data = await api.getProjects();
+        if (isMounted) {
+          setProjects(data);
+          setError(null);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Failed to fetch projects. Please verify backend is running.'
+          );
+          setLoading(false);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleProjectCreated = (newProject: Project) => {
